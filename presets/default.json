@@ -1,0 +1,9 @@
+{
+    "name": "Default",
+    "description": "Standard 6-instance grid layout",
+    "instanceCount": 6,
+    "arrangement": "grid",
+    "dangerouslySkipPermissions": true,
+    "padding": 20,
+    "windowGap": 10
+}

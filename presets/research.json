@@ -1,0 +1,9 @@
+{
+    "name": "Research Squad",
+    "description": "3 horizontal instances for research tasks",
+    "instanceCount": 3,
+    "arrangement": "horizontal",
+    "additionalArgs": "--model sonnet",
+    "padding": 30,
+    "windowGap": 15
+}

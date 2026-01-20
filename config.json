@@ -1,0 +1,55 @@
+{
+    "// CLAUDE SQUAD CONFIGURATION": "Edit these settings and save!",
+
+    "instanceCount": 6,
+    "// instanceCount": "Number of Claude Code windows to open (1-12)",
+
+    "dangerouslySkipPermissions": true,
+    "// dangerouslySkipPermissions": "Set to false for safe mode with permission prompts",
+
+    "arrangement": "grid",
+    "// arrangement": "Options: grid, horizontal, vertical",
+
+    "targetMonitor": "primary",
+    "// targetMonitor": "Options: primary, all, or monitor number (1, 2, 3...)",
+
+    "launchDelay": 800,
+    "// launchDelay": "Milliseconds between launching each window",
+
+    "padding": 20,
+    "// padding": "Pixels of padding from screen edges",
+
+    "windowGap": 10,
+    "// windowGap": "Pixels of gap between windows",
+
+    "titlePrefix": "Claude Code",
+    "// titlePrefix": "Custom name prefix for each window",
+
+    "additionalArgs": "",
+    "// additionalArgs": "Extra Claude CLI arguments (e.g. --model sonnet --verbose)",
+
+    "preset": null,
+    "// preset": "Load settings from presets/<name>.json (e.g. 'research'). Overrides defaults.",
+
+    "keepLauncherOpen": false,
+    "// keepLauncherOpen": "Keep launcher window open to monitor instance status",
+
+    "instances": null,
+    "// instances": "Per-instance config array: [{title, workingDir, additionalArgs, color}, ...]",
+
+    "colors": [
+        "#E74C3C",
+        "#E67E22",
+        "#F1C40F",
+        "#2ECC71",
+        "#00CED1",
+        "#3498DB",
+        "#9B59B6",
+        "#E91E63",
+        "#00BCD4",
+        "#8BC34A",
+        "#FF5722",
+        "#607D8B"
+    ],
+    "// colors": "Tab colors for each instance (hex). 1=Red, 2=Orange, 3=Yellow, 4=Green, 5=Cyan, 6=Blue..."
+}
