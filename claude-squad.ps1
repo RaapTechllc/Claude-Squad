@@ -20,7 +20,10 @@ $DefaultConfig = @{
     DangerouslySkipPermissions = $true
     Arrangement = "grid"
     TargetMonitor = "primary"
-    LaunchDelay = 800
+    LaunchDelay = 500
+    StabilizationDelay = $null  # If null, uses StabilizationDelayPerWindow * InstanceCount
+    StabilizationDelayPerWindow = 2000  # ~2 seconds per window
+    WindowReadyTimeout = 15000
     Padding = 20
     WindowGap = 10
     TitlePrefix = "Claude Code"
@@ -267,6 +270,21 @@ function Test-Configuration {
         $errors += "launchDelay must be >= 0 (got: $($Config.LaunchDelay))"
     }
 
+    # Validate stabilizationDelay (>= 0, or null for dynamic)
+    if ($null -ne $Config.StabilizationDelay -and $Config.StabilizationDelay -lt 0) {
+        $errors += "stabilizationDelay must be >= 0 or null (got: $($Config.StabilizationDelay))"
+    }
+
+    # Validate stabilizationDelayPerWindow (>= 0)
+    if ($Config.StabilizationDelayPerWindow -lt 0) {
+        $errors += "stabilizationDelayPerWindow must be >= 0 (got: $($Config.StabilizationDelayPerWindow))"
+    }
+
+    # Validate windowReadyTimeout (>= 1000)
+    if ($Config.WindowReadyTimeout -lt 1000) {
+        $errors += "windowReadyTimeout must be >= 1000 (got: $($Config.WindowReadyTimeout))"
+    }
+
     # Validate padding (>= 0)
     if ($Config.Padding -lt 0) {
         $errors += "padding must be >= 0 (got: $($Config.Padding))"
@@ -336,10 +354,14 @@ function Get-Preset {
 <#
 .SYNOPSIS
     Loads and merges configuration from config.json, presets, and defaults.
+.PARAMETER PresetOverride
+    Optional preset name to override the config.json preset value.
 .OUTPUTS
     Returns the merged configuration hashtable.
 #>
 function Get-Configuration {
+    param([string]$PresetOverride)
+
     $Config = $DefaultConfig.Clone()
     $ConfigPath = Join-Path $script:ScriptDir "config.json"
 
@@ -347,9 +369,12 @@ function Get-Configuration {
         try {
             $jsonConfig = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 
+            # Command-line preset overrides config.json preset
+            $presetName = if ($PresetOverride) { $PresetOverride } else { $jsonConfig.preset }
+
             # Check for preset first
-            if ($jsonConfig.preset) {
-                $preset = Get-Preset $jsonConfig.preset
+            if ($presetName) {
+                $preset = Get-Preset $presetName
                 if ($preset) {
                     # Apply preset values
                     if ($null -ne $preset.instanceCount) { $Config.InstanceCount = $preset.instanceCount }
@@ -357,6 +382,9 @@ function Get-Configuration {
                     if ($null -ne $preset.arrangement) { $Config.Arrangement = $preset.arrangement }
                     if ($null -ne $preset.targetMonitor) { $Config.TargetMonitor = $preset.targetMonitor }
                     if ($null -ne $preset.launchDelay) { $Config.LaunchDelay = $preset.launchDelay }
+                    if ($null -ne $preset.stabilizationDelay) { $Config.StabilizationDelay = $preset.stabilizationDelay }
+                    if ($null -ne $preset.stabilizationDelayPerWindow) { $Config.StabilizationDelayPerWindow = $preset.stabilizationDelayPerWindow }
+                    if ($null -ne $preset.windowReadyTimeout) { $Config.WindowReadyTimeout = $preset.windowReadyTimeout }
                     if ($null -ne $preset.padding) { $Config.Padding = $preset.padding }
                     if ($null -ne $preset.windowGap) { $Config.WindowGap = $preset.windowGap }
                     if ($null -ne $preset.titlePrefix) { $Config.TitlePrefix = $preset.titlePrefix }
@@ -371,6 +399,9 @@ function Get-Configuration {
             if ($null -ne $jsonConfig.arrangement) { $Config.Arrangement = $jsonConfig.arrangement }
             if ($null -ne $jsonConfig.targetMonitor) { $Config.TargetMonitor = $jsonConfig.targetMonitor }
             if ($null -ne $jsonConfig.launchDelay) { $Config.LaunchDelay = $jsonConfig.launchDelay }
+            if ($jsonConfig.PSObject.Properties.Name -contains 'stabilizationDelay') { $Config.StabilizationDelay = $jsonConfig.stabilizationDelay }
+            if ($null -ne $jsonConfig.stabilizationDelayPerWindow) { $Config.StabilizationDelayPerWindow = $jsonConfig.stabilizationDelayPerWindow }
+            if ($null -ne $jsonConfig.windowReadyTimeout) { $Config.WindowReadyTimeout = $jsonConfig.windowReadyTimeout }
             if ($null -ne $jsonConfig.padding) { $Config.Padding = $jsonConfig.padding }
             if ($null -ne $jsonConfig.windowGap) { $Config.WindowGap = $jsonConfig.windowGap }
             if ($null -ne $jsonConfig.titlePrefix) { $Config.TitlePrefix = $jsonConfig.titlePrefix }
@@ -631,7 +662,7 @@ function Move-WindowWithRetry {
 function Show-Banner {
     $banner = @"
 
-   `e[96m+===============================================================+
+   `e[38;5;208m✦`e[96m===============================================================`e[38;5;208m✦`e[96m
    |                                                               |
    |     `e[97m######  ##       ###    ##   ## #####   ######`e[96m            |
    |    `e[97m##      ##      ## ##   ##   ## ##   ## ##`e[96m                 |
@@ -645,7 +676,7 @@ function Show-Banner {
    |              `e[93m    ## ## ##   ##   ## ##  ##  ##   ##`e[96m            |
    |              `e[93m###### #####   ######  ##   ## #####`e[96m             |
    |                                                               |
-   +===============================================================+`e[0m
+   `e[38;5;208m✦`e[96m===============================================================`e[38;5;208m✦`e[0m
 
 "@
     Write-Host $banner
@@ -679,6 +710,15 @@ function Show-Configuration {
     if ($Config.Instances) {
         Write-Host "    Per-Instance:     `e[97m$($Config.Instances.Count) custom configs`e[0m"
     }
+    Write-Host ""
+    Write-Host "  `e[93mTiming (Adaptive):`e[0m"
+    Write-Host "    Launch Delay:     `e[97m$($Config.LaunchDelay)ms`e[0m `e[90m(between launches)`e[0m"
+    if ($Config.StabilizationDelayPerWindow -and $Config.InstanceCount -gt 0) {
+        Write-Host "    Stabilization:    `e[97m$($Config.StabilizationDelay)ms`e[0m `e[90m($($Config.StabilizationDelayPerWindow)ms × $($Config.InstanceCount) windows)`e[0m"
+    } else {
+        Write-Host "    Stabilization:    `e[97m$($Config.StabilizationDelay)ms`e[0m `e[90m(fixed)`e[0m"
+    }
+    Write-Host "    Ready Timeout:    `e[97m$($Config.WindowReadyTimeout)ms`e[0m `e[90m(max wait per window)`e[0m"
     Write-Host ""
     Write-Host "  `e[93mMonitor Bounds:`e[0m"
     Write-Host "    Working Area:     `e[97m$($Bounds.Width) x $($Bounds.Height)`e[0m"
@@ -722,6 +762,80 @@ function Show-Summary {
 
     Write-Host "  `e[96m======================================================`e[0m"
     Write-Host ""
+}
+#endregion
+
+#region Window Readiness Functions
+<#
+.SYNOPSIS
+    Waits for a window with the specified title to be ready.
+.DESCRIPTION
+    Polls for a window to appear with the given title, then waits for
+    a stabilization period to ensure it's fully rendered before returning.
+.PARAMETER Title
+    The window title to search for (partial match).
+.PARAMETER ExcludeWindows
+    Array of window handles to exclude from the search.
+.PARAMETER TimeoutMs
+    Maximum time to wait for the window in milliseconds.
+.PARAMETER StabilizationMs
+    Time to wait after finding the window before returning.
+.OUTPUTS
+    Returns the window handle if found and ready, $null otherwise.
+#>
+function Wait-WindowReady {
+    param(
+        [string]$Title,
+        [IntPtr[]]$ExcludeWindows = @(),
+        [int]$TimeoutMs = 15000,
+        [int]$StabilizationMs = 2500
+    )
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $pollInterval = 250  # Check every 250ms
+    $foundHwnd = $null
+
+    Write-Log "Waiting for window '$Title' (timeout: ${TimeoutMs}ms, stabilization: ${StabilizationMs}ms)" "DEBUG"
+
+    # Phase 1: Poll until the window appears
+    while ($stopwatch.ElapsedMilliseconds -lt $TimeoutMs) {
+        $allWindows = [WindowManager]::FindWindowTerminalWindows()
+
+        foreach ($hwnd in $allWindows) {
+            if ($hwnd -in $ExcludeWindows) { continue }
+
+            $windowTitle = [WindowManager]::GetWindowTitle($hwnd)
+            if ($windowTitle -like "*$Title*") {
+                $foundHwnd = $hwnd
+                Write-Log "Window '$Title' found after $($stopwatch.ElapsedMilliseconds)ms" "DEBUG"
+                break
+            }
+        }
+
+        if ($foundHwnd) { break }
+
+        Start-Sleep -Milliseconds $pollInterval
+    }
+
+    if (-not $foundHwnd) {
+        Write-Log "Window '$Title' not found within timeout" "WARN"
+        return $null
+    }
+
+    # Phase 2: Stabilization delay - let the window fully render
+    # This is where Claude Code draws its logo, initializes the terminal, etc.
+    Write-Log "Window found, waiting ${StabilizationMs}ms for stabilization..." "DEBUG"
+    Start-Sleep -Milliseconds $StabilizationMs
+
+    # Verify window is still there after stabilization
+    if ([WindowManager]::IsWindowVisible($foundHwnd)) {
+        $totalTime = $stopwatch.ElapsedMilliseconds
+        Write-Log "Window '$Title' ready after ${totalTime}ms total" "DEBUG"
+        return $foundHwnd
+    }
+
+    Write-Log "Window '$Title' disappeared during stabilization" "WARN"
+    return $null
 }
 #endregion
 
@@ -777,7 +891,10 @@ function Get-ProcessHealthStatus {
     launching instances, and positioning windows.
 #>
 function Start-ClaudeSquad {
-    param([string]$ProjectDirArg)
+    param(
+        [string]$ProjectDirArg,
+        [string]$Preset
+    )
 
     # Clear screen and show banner
     Clear-Host
@@ -803,7 +920,7 @@ function Start-ClaudeSquad {
     Write-Host ""
 
     # Load configuration
-    $Config = Get-Configuration
+    $Config = Get-Configuration -PresetOverride $Preset
 
     # Validate configuration
     $configErrors = Test-Configuration $Config
@@ -820,6 +937,14 @@ function Start-ClaudeSquad {
     }
 
     Write-Log "Configuration validated" "DEBUG"
+
+    # Calculate effective stabilization delay (dynamic or fixed)
+    if ($null -eq $Config.StabilizationDelay) {
+        $Config.StabilizationDelay = $Config.StabilizationDelayPerWindow * $Config.InstanceCount
+        Write-Log "Stabilization delay: $($Config.StabilizationDelayPerWindow)ms x $($Config.InstanceCount) windows = $($Config.StabilizationDelay)ms" "DEBUG"
+    } else {
+        Write-Log "Using fixed stabilization delay: $($Config.StabilizationDelay)ms" "DEBUG"
+    }
 
     # Determine project directory
     $ProjectDir = $script:ScriptDir
@@ -841,9 +966,6 @@ function Start-ClaudeSquad {
     $positions = Get-WindowPositions -Count $Config.InstanceCount -Bounds $bounds `
         -Arrangement $Config.Arrangement -Padding $Config.Padding -Gap $Config.WindowGap
 
-    Write-Host "  `e[93mLaunching $($Config.InstanceCount) Claude Code instances...`e[0m"
-    Write-Host ""
-
     # Color display mapping
     $colorNames = @{
         "#E74C3C" = "`e[91m"; "#E67E22" = "`e[33m"; "#F1C40F" = "`e[93m"; "#2ECC71" = "`e[92m"
@@ -851,8 +973,15 @@ function Start-ClaudeSquad {
         "#00BCD4" = "`e[96m"; "#8BC34A" = "`e[92m"; "#FF5722" = "`e[33m"; "#607D8B" = "`e[90m"
     }
 
-    # Launch each instance
-    $launchedTitles = @()
+    # Track instance configs for later positioning
+    $instanceConfigs = @()
+
+    #═══════════════════════════════════════════════════════════════════════════
+    # PHASE 1: Launch all windows first (no positioning yet)
+    #═══════════════════════════════════════════════════════════════════════════
+    Write-Host "  `e[93mPhase 1: Launching $($Config.InstanceCount) Claude Code instances...`e[0m"
+    Write-Host ""
+
     for ($i = 0; $i -lt $Config.InstanceCount; $i++) {
         $num = $i + 1
         $instanceConfig = Get-InstanceConfig $Config $i $ProjectDir
@@ -864,7 +993,7 @@ function Start-ClaudeSquad {
         $consoleColor = $colorNames[$color]
         if (-not $consoleColor) { $consoleColor = "`e[97m" }
 
-        Write-Host "    `e[90m[$num]`e[0m ${consoleColor}#`e[0m `e[97m$title`e[0m `e[90m- Launching...`e[0m"
+        Write-Host "    `e[90m[$num/$($Config.InstanceCount)]`e[0m ${consoleColor}■`e[0m `e[97m$title`e[0m" -NoNewline
         Write-Log "Launching: $title in $workDir" "DEBUG"
 
         # Build the claude command
@@ -877,7 +1006,7 @@ function Start-ClaudeSquad {
         }
 
         # Launch Windows Terminal with specific title and color
-        $wtArgs = "--title `"$title`" --tabColor `"$color`" -d `"$workDir`" cmd /k `"$claudeCmd`""
+        $wtArgs = "--title `"$title`" --suppressApplicationTitle --tabColor `"$color`" -d `"$workDir`" cmd /k `"$claudeCmd`""
 
         try {
             $process = Start-Process -FilePath "wt" -ArgumentList $wtArgs -PassThru
@@ -887,105 +1016,133 @@ function Start-ClaudeSquad {
                     Title = $title
                     PID = $process.Id
                 }
+                $instanceConfigs += @{
+                    Index = $i
+                    Title = $title
+                    Position = $positions[$i]
+                    Color = $color
+                    ConsoleColor = $consoleColor
+                }
+                Write-Host " `e[92m✓`e[0m"
                 Write-Log "Process started with PID: $($process.Id)" "DEBUG"
             }
         }
         catch {
             Write-Log "Failed to launch $title`: $_" "ERROR"
+            Write-Host " `e[91mFailed!`e[0m"
         }
 
-        $launchedTitles += $title
+        # Small delay between launches to avoid overwhelming the system
         Start-Sleep -Milliseconds $Config.LaunchDelay
     }
 
     Write-Host ""
-    Write-Host "  `e[93mWaiting for windows to initialize...`e[0m"
-    Write-Log "Waiting 5 seconds for windows to initialize..." "DEBUG"
-    Start-Sleep -Milliseconds 5000
 
-    Write-Host "  `e[93mPositioning windows on $($bounds.Name)...`e[0m"
-    Write-Log "Positioning windows..." "INFO"
-
-    # Find all NEW Windows Terminal windows
-    $allWindows = [WindowManager]::FindWindowTerminalWindows()
-    $newWindows = $allWindows | Where-Object { $_ -notin $existingWindows }
-
-    Write-Log "Found $($newWindows.Count) new terminal windows" "DEBUG"
+    #═══════════════════════════════════════════════════════════════════════════
+    # PHASE 2: Wait for ALL windows to be ready (Claude Code activated in each)
+    #═══════════════════════════════════════════════════════════════════════════
+    Write-Host "  `e[93mPhase 2: Waiting for all Claude Code instances to activate...`e[0m"
+    Write-Host "  `e[90m(This ensures all windows are fully ready before positioning)`e[0m"
     Write-Host ""
 
-    # Position windows - try matching by title first
-    $positioned = 0
+    $readyWindows = @{}  # Maps title -> hwnd
     $usedWindows = @()
+    $maxWaitTime = $Config.WindowReadyTimeout * $Config.InstanceCount  # Scale timeout for multiple windows
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $pollInterval = 500  # Check every 500ms
 
-    foreach ($title in $launchedTitles) {
-        if ($positioned -ge $positions.Count) { break }
-        $pos = $positions[$positioned]
+    # Poll until all windows are found or timeout
+    while ($readyWindows.Count -lt $instanceConfigs.Count -and $stopwatch.ElapsedMilliseconds -lt $maxWaitTime) {
+        $allWindows = [WindowManager]::FindWindowTerminalWindows()
 
-        # Find window with this title (with retry)
-        $found = $false
-        $retryCount = 0
-        $maxRetries = 3
+        foreach ($inst in $instanceConfigs) {
+            if ($readyWindows.ContainsKey($inst.Title)) { continue }
 
-        while (-not $found -and $retryCount -lt $maxRetries) {
-            foreach ($hwnd in $newWindows) {
-                if ($hwnd -in $usedWindows) { continue }
+            foreach ($hwnd in $allWindows) {
+                if ($hwnd -in $existingWindows -or $hwnd -in $usedWindows) { continue }
 
                 $windowTitle = [WindowManager]::GetWindowTitle($hwnd)
-                if ($windowTitle -like "*$title*") {
-                    $moveResult = Move-WindowWithRetry $hwnd $pos
-
-                    if ($moveResult) {
-                        Write-Host "    `e[92m*`e[0m Positioned: $title at ($($pos.X), $($pos.Y)) size $($pos.Width)x$($pos.Height)"
-                        Write-Log "Positioned: $title at ($($pos.X), $($pos.Y))" "SUCCESS"
-                        $usedWindows += $hwnd
-                        $found = $true
-                        $positioned++
-                        break
-                    } else {
-                        Write-Log "Failed to move window: $title" "WARN"
-                    }
-                }
-            }
-
-            if (-not $found) {
-                $retryCount++
-                if ($retryCount -lt $maxRetries) {
-                    Write-Log "Window not found for '$title', retry $retryCount of $maxRetries..." "DEBUG"
-                    Start-Sleep -Milliseconds 1000
-                    # Refresh window list
-                    $allWindows = [WindowManager]::FindWindowTerminalWindows()
-                    $newWindows = $allWindows | Where-Object { $_ -notin $existingWindows }
+                if ($windowTitle -like "*$($inst.Title)*") {
+                    $readyWindows[$inst.Title] = $hwnd
+                    $usedWindows += $hwnd
+                    Write-Host "    $($inst.ConsoleColor)■`e[0m `e[97m$($inst.Title)`e[0m `e[92mfound`e[0m"
+                    Write-Log "Window found: $($inst.Title) after $($stopwatch.ElapsedMilliseconds)ms" "DEBUG"
+                    break
                 }
             }
         }
 
-        if (-not $found) {
-            Write-Host "    `e[91mX`e[0m Could not find: $title"
-            Write-Log "Could not find window: $title" "WARN"
+        if ($readyWindows.Count -lt $instanceConfigs.Count) {
+            Start-Sleep -Milliseconds $pollInterval
         }
     }
 
-    # Fallback: position any remaining new windows in order
-    if ($positioned -lt $newWindows.Count -and $positioned -lt $positions.Count) {
-        Write-Host ""
-        Write-Host "  `e[93mPositioning remaining windows...`e[0m"
-        Write-Log "Positioning remaining unmatched windows..." "DEBUG"
+    Write-Host ""
+    Write-Host "  `e[90mFound $($readyWindows.Count) of $($instanceConfigs.Count) windows`e[0m"
 
-        foreach ($hwnd in $newWindows) {
-            if ($hwnd -in $usedWindows) { continue }
-            if ($positioned -ge $positions.Count) { break }
+    # Additional stabilization delay to let Claude Code fully render in all windows
+    Write-Host "  `e[90mWaiting for stabilization ($($Config.StabilizationDelay)ms)...`e[0m"
+    Start-Sleep -Milliseconds $Config.StabilizationDelay
+    Write-Host ""
 
-            $pos = $positions[$positioned]
+    #═══════════════════════════════════════════════════════════════════════════
+    # PHASE 3: Position all windows now that they're all ready
+    #═══════════════════════════════════════════════════════════════════════════
+    Write-Host "  `e[93mPhase 3: Positioning all windows...`e[0m"
+    Write-Host ""
+
+    $positioned = 0
+
+    foreach ($inst in $instanceConfigs) {
+        $pos = $inst.Position
+
+        if ($readyWindows.ContainsKey($inst.Title)) {
+            $hwnd = $readyWindows[$inst.Title]
+
+            Write-Host "    $($inst.ConsoleColor)■`e[0m `e[97m$($inst.Title)`e[0m `e[90m→ ($($pos.X), $($pos.Y))`e[0m" -NoNewline
+
             $moveResult = Move-WindowWithRetry $hwnd $pos
 
             if ($moveResult) {
-                $windowTitle = [WindowManager]::GetWindowTitle($hwnd)
+                Write-Host " `e[92m✓`e[0m"
+                Write-Log "Positioned: $($inst.Title) at ($($pos.X), $($pos.Y)) size $($pos.Width)x$($pos.Height)" "SUCCESS"
+                $positioned++
+            } else {
+                Write-Host " `e[91mFailed`e[0m"
+                Write-Log "Failed to move window: $($inst.Title)" "WARN"
+            }
+        } else {
+            Write-Host "    $($inst.ConsoleColor)■`e[0m `e[97m$($inst.Title)`e[0m `e[91mwindow not found - manual positioning needed`e[0m"
+            Write-Log "Window not found for positioning: $($inst.Title)" "WARN"
+        }
+    }
+
+    Write-Host ""
+
+    # Final check: try to position any windows that might have been missed
+    $allWindows = [WindowManager]::FindWindowTerminalWindows()
+    $unmatchedWindows = $allWindows | Where-Object { $_ -notin $existingWindows -and $_ -notin $usedWindows }
+
+    if ($unmatchedWindows.Count -gt 0 -and $positioned -lt $Config.InstanceCount) {
+        Write-Host "  `e[93mAttempting to position $($unmatchedWindows.Count) remaining window(s)...`e[0m"
+        Write-Log "Found $($unmatchedWindows.Count) unmatched windows, attempting fallback positioning..." "DEBUG"
+
+        foreach ($hwnd in $unmatchedWindows) {
+            if ($positioned -ge $positions.Count) { break }
+
+            $pos = $positions[$positioned]
+            $windowTitle = [WindowManager]::GetWindowTitle($hwnd)
+
+            $moveResult = Move-WindowWithRetry $hwnd $pos
+
+            if ($moveResult) {
                 Write-Host "    `e[92m*`e[0m Positioned: $windowTitle"
-                Write-Log "Positioned fallback: $windowTitle" "DEBUG"
+                Write-Log "Positioned fallback: $windowTitle at ($($pos.X), $($pos.Y))" "DEBUG"
                 $usedWindows += $hwnd
                 $positioned++
             }
         }
+        Write-Host ""
     }
 
     # Get process health status
@@ -1019,12 +1176,20 @@ function Start-ClaudeSquad {
 #endregion
 
 #region Script Execution
-# Determine project directory from arguments
+# Parse command line arguments
 $ProjectDirArg = $null
-if ($args.Count -gt 0 -and (Test-Path $args[0])) {
-    $ProjectDirArg = $args[0]
+$PresetArg = $null
+
+for ($i = 0; $i -lt $args.Count; $i++) {
+    if ($args[$i] -eq "-Preset" -and $i + 1 -lt $args.Count) {
+        $PresetArg = $args[$i + 1]
+        $i++  # Skip next argument (the preset name)
+    }
+    elseif (-not $ProjectDirArg -and (Test-Path $args[$i])) {
+        $ProjectDirArg = $args[$i]
+    }
 }
 
 # Start Claude Squad
-Start-ClaudeSquad $ProjectDirArg
+Start-ClaudeSquad -ProjectDirArg $ProjectDirArg -Preset $PresetArg
 #endregion

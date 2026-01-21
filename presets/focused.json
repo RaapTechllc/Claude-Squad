@@ -1,0 +1,10 @@
+{
+    "name": "Focused",
+    "description": "2-instance horizontal layout for focused work with a reference window",
+    "instanceCount": 2,
+    "arrangement": "horizontal",
+    "instances": [
+        { "title": "Main", "color": "#3498DB" },
+        { "title": "Reference", "color": "#95A5A6" }
+    ]
+}

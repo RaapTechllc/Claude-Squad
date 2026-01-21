@@ -1,0 +1,6 @@
+{
+    "name": "Solo",
+    "description": "Single maximized instance for simple tasks",
+    "instanceCount": 1,
+    "arrangement": "grid"
+}

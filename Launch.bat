@@ -10,6 +10,37 @@ echo.
 :: Get the directory where this batch file is located
 set "SCRIPT_DIR=%~dp0"
 
+:: Initialize variables for argument parsing
+set "PROJECT_DIR="
+set "PRESET_NAME="
+
+:: Parse command line arguments
+:parse_args
+if "%~1"=="" goto done_parsing
+
+:: Check for --preset argument
+if /i "%~1"=="--preset" (
+    set "PRESET_NAME=%~2"
+    shift
+    shift
+    goto parse_args
+)
+
+:: Check for -preset argument (alternative syntax)
+if /i "%~1"=="-preset" (
+    set "PRESET_NAME=%~2"
+    shift
+    shift
+    goto parse_args
+)
+
+:: Any other argument is treated as the project directory
+set "PROJECT_DIR=%~1"
+shift
+goto parse_args
+
+:done_parsing
+
 :: Check if PowerShell script exists
 if not exist "%SCRIPT_DIR%claude-squad.ps1" (
     echo   ═══════════════════════════════════════════════════════════════
@@ -33,12 +64,21 @@ if not exist "%SCRIPT_DIR%config.json" (
     echo.
 )
 
+:: Build PowerShell arguments
+set "PS_ARGS="%SCRIPT_DIR%""
+if defined PROJECT_DIR set "PS_ARGS=%PS_ARGS% "%PROJECT_DIR%""
+if defined PRESET_NAME (
+    set "PS_ARGS=%PS_ARGS% -Preset "%PRESET_NAME%""
+    echo   Using preset: %PRESET_NAME%
+    echo.
+)
+
 :: Try PowerShell 7 first (recommended)
 where pwsh.exe >nul 2>&1
 if %errorlevel% equ 0 (
     echo   Running with PowerShell 7...
     echo.
-    pwsh.exe -ExecutionPolicy Bypass -File "%SCRIPT_DIR%claude-squad.ps1" "%SCRIPT_DIR%"
+    pwsh.exe -ExecutionPolicy Bypass -File "%SCRIPT_DIR%claude-squad.ps1" %PS_ARGS%
     if %errorlevel% neq 0 (
         echo.
         echo   ═══════════════════════════════════════════════════════════════
@@ -64,7 +104,7 @@ if %errorlevel% equ 0 (
     echo.
     echo   Or download from: https://aka.ms/powershell
     echo.
-    powershell.exe -ExecutionPolicy Bypass -File "%SCRIPT_DIR%claude-squad.ps1" "%SCRIPT_DIR%"
+    powershell.exe -ExecutionPolicy Bypass -File "%SCRIPT_DIR%claude-squad.ps1" %PS_ARGS%
     if %errorlevel% neq 0 (
         echo.
         echo   Script execution failed. PowerShell 7 is recommended.

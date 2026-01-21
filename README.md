@@ -44,6 +44,42 @@ A Windows multi-terminal launcher for Claude Code instances. Launch multiple Cla
 3. Double-click `Launch.bat`
 4. Watch your Claude Code army deploy!
 
+## CLI Usage
+
+Launch with command-line options for quick preset switching:
+
+```batch
+Launch.bat --preset <name>
+```
+
+### Examples
+
+```batch
+# Launch with fullstack preset (4 instances for frontend/backend/api/tests)
+Launch.bat --preset fullstack
+
+# Launch with focused preset (2 horizontal instances)
+Launch.bat --preset focused
+
+# Launch single instance
+Launch.bat --preset solo
+
+# Launch with research preset
+Launch.bat --preset research
+```
+
+### Available Presets
+
+| Preset | Instances | Layout | Description |
+|--------|-----------|--------|-------------|
+| `default` | 6 | grid | Standard 6-instance grid layout |
+| `fullstack` | 4 | grid | Frontend, Backend, API, and Tests workspaces |
+| `research` | 3 | horizontal | Research tasks with Sonnet model |
+| `focused` | 2 | horizontal | Main workspace with reference window |
+| `solo` | 1 | grid | Single maximized instance |
+
+CLI arguments override `config.json` settings for that session.
+
 ## Configuration Reference
 
 Edit `config.json` to customize behavior:
@@ -168,15 +204,18 @@ winget install Microsoft.WindowsTerminal
 
 ```
 claude-squad/
-├── Launch.bat           # Double-click to start
+├── Launch.bat           # Double-click to start (supports --preset arg)
 ├── claude-squad.ps1     # Main PowerShell script
 ├── config.json          # Your configuration
 ├── README.md            # This file
 ├── logs/                # Auto-created log files
 │   └── claude-squad-YYYY-MM-DD_HH-mm-ss.log
 └── presets/             # Layout presets
-    ├── default.json
-    └── research.json
+    ├── default.json     # Standard 6-instance grid
+    ├── fullstack.json   # 4-instance fullstack dev setup
+    ├── research.json    # 3-instance horizontal research
+    ├── focused.json     # 2-instance main + reference
+    └── solo.json        # Single instance
 ```
 
 ## Logs

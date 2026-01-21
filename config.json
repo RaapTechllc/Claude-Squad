@@ -1,7 +1,7 @@
 {
     "// CLAUDE SQUAD CONFIGURATION": "Edit these settings and save!",
 
-    "instanceCount": 6,
+    "instanceCount": 4,
     "// instanceCount": "Number of Claude Code windows to open (1-12)",
 
     "dangerouslySkipPermissions": true,
@@ -13,8 +13,17 @@
     "targetMonitor": "primary",
     "// targetMonitor": "Options: primary, all, or monitor number (1, 2, 3...)",
 
-    "launchDelay": 800,
-    "// launchDelay": "Milliseconds between launching each window",
+    "launchDelay": 500,
+    "// launchDelay": "Milliseconds to wait after launching before polling for window",
+
+    "stabilizationDelay": null,
+    "// stabilizationDelay": "Fixed total delay after all windows open. If null, uses stabilizationDelayPerWindow instead.",
+
+    "stabilizationDelayPerWindow": 1900,
+    "// stabilizationDelayPerWindow": "Milliseconds per window for stabilization (e.g., 6 windows × 2000ms = 12000ms total)",
+
+    "windowReadyTimeout": 15000,
+    "// windowReadyTimeout": "Maximum milliseconds to wait for each window to appear",
 
     "padding": 20,
     "// padding": "Pixels of padding from screen edges",

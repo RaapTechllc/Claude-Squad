@@ -1,0 +1,12 @@
+{
+    "name": "Fullstack",
+    "description": "4-instance grid for full-stack development with frontend, backend, API, and tests",
+    "instanceCount": 4,
+    "arrangement": "grid",
+    "instances": [
+        { "title": "Frontend", "workingDir": "./frontend", "color": "#3498DB" },
+        { "title": "Backend", "workingDir": "./backend", "color": "#2ECC71" },
+        { "title": "API", "workingDir": "./api", "color": "#9B59B6" },
+        { "title": "Tests", "workingDir": "./tests", "color": "#E74C3C" }
+    ]
+}
